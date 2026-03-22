@@ -334,6 +334,17 @@ html,body{min-height:100%;background:var(--bg);color:var(--ink);font-family:'Out
   body{font-size:13px}
 }
 
+/* ── Offline / Online mode toggle ── */
+.source-toggle{display:flex;gap:0;border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;background:var(--surface2)}
+.source-btn{flex:1;padding:9px 14px;border:none;background:transparent;font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .14s;display:flex;align-items:center;justify-content:center;gap:6px;border-right:1px solid var(--border)}
+.source-btn:last-child{border-right:none}
+.source-btn.active{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-sm)}
+.source-btn.active.online{color:#15803d}
+.source-dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.7}
+.online-note{font-size:11px;color:var(--hint);margin-top:8px;display:flex;align-items:center;gap:5px;line-height:1.5}
+.online-note svg{flex-shrink:0;opacity:.5}
+.online-note.hidden{display:none}
+
 /* ── Inline generate progress ── */
 .gen-progress{display:none;margin:0 0 0 0;padding:16px 18px;background:var(--ink);border-radius:var(--r-lg);animation:qIn .2s ease}
 .gen-progress.show{display:block}
@@ -436,6 +447,24 @@ html,body{min-height:100%;background:var(--bg);color:var(--ink);font-family:'Out
         <button class="type-tog on" data-type="word" onclick="toggleType(this)"><div class="chk"></div>Word problems</button>
         <button class="type-tog" data-type="puzzle" onclick="toggleType(this)"><div class="chk"></div>Puzzles</button>
         <button class="type-tog" data-type="reallife" onclick="toggleType(this)"><div class="chk"></div>Real-World Problems</button>
+      </div>
+    </div>
+
+    <div class="config-section">
+      <div class="config-label">Question source</div>
+      <div class="source-toggle">
+        <button class="source-btn active" id="srcOffline" onclick="setSource('offline')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+          Offline Bank
+        </button>
+        <button class="source-btn online" id="srcOnline" onclick="setSource('online')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+          AI Online
+        </button>
+      </div>
+      <div class="online-note hidden" id="onlineNote">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        AI mode uses Claude API — requires a valid API key set in your server. Questions are freshly generated for each session.
       </div>
     </div>
 
@@ -615,6 +644,7 @@ let tcQuestionIndex=0;
 let tcAllQuestions=[];
 let tcMode=false;
 let currentMode='practice';
+let appSource='offline'; // 'offline' | 'online'
 
 function switchMode(mode){
   currentMode=mode;
@@ -630,6 +660,18 @@ function switchMode(mode){
     document.getElementById('outputArea').innerHTML=`<div class="empty"><div class="empty-glyph">∑</div><div class="empty-title">Ready when you are</div><div class="empty-sub">Pick your topic, difficulty, and question types — then hit Generate to build your custom practice set.</div></div>`;
     if(tcTimerInterval){ clearInterval(tcTimerInterval); document.getElementById('timerHud').classList.remove('show'); }
   }
+}
+
+function setSource(src){
+  appSource=src;
+  document.getElementById('srcOffline').classList.toggle('active', src==='offline');
+  document.getElementById('srcOnline').classList.toggle('active', src==='online');
+  document.getElementById('onlineNote').classList.toggle('hidden', src==='offline');
+  // Update hero sub text
+  const sub=document.querySelector('.hero-sub');
+  if(sub) sub.textContent = src==='online'
+    ? 'AI-generated questions by Claude — unique every session, GSE-aligned for 7th grade accelerated learners.'
+    : 'Questions from our built-in bank — works offline, instant loading, GSE-aligned for 7th grade accelerated learners.';
 }
 
 function selectPreset(el){
@@ -981,7 +1023,6 @@ async function generate(){
   scoreCorrect=0;scoreTotal=0;updateScore();
 
   // Show inline progress bar
-  const prog=document.getElementById('genProgress');
   const progSection=document.getElementById('genProgressSection');
   const gpNum=document.getElementById('gpNum');
   const gpBar=document.getElementById('gpBar');
@@ -992,57 +1033,109 @@ async function generate(){
   if(gpSub) gpSub.textContent=`${count} questions · ${topics.join(', ')} · ${selectedDiff}`;
   if(gpNum) gpNum.textContent='0';
   if(gpBar) gpBar.style.width='0%';
-  if(gpLabel) gpLabel.textContent='Reading your selections…';
+  if(progSection) progSection.scrollIntoView({behavior:'smooth',block:'nearest'});
 
-  // Scroll progress bar into view
-  if(progSection) progSection.scrollIntoView({behavior:'smooth', block:'nearest'});
-
-  // Animate progress 0→85 over 1.5s
   let pct=0;
   clearInterval(_loaderInterval);
-  const phases=[
-    {at:20,label:'Reading your selections…'},
-    {at:45,label:'Filtering the bank…'},
-    {at:70,label:'Shuffling questions…'},
-    {at:85,label:'Almost ready…'},
-  ];
-  _loaderInterval=setInterval(()=>{
-    pct=Math.min(pct+1,85);
-    if(gpNum) gpNum.textContent=pct;
-    if(gpBar) gpBar.style.width=pct+'%';
-    const phase=phases.filter(p=>pct>=p.at).pop();
-    if(phase&&gpLabel) gpLabel.textContent=phase.label;
-  },18);
 
-  // Do the actual work after a short delay so animation is visible
-  setTimeout(()=>{
+  function finishLoad(questions, errorMsg){
     clearInterval(_loaderInterval);
-    let questions;
-    try{
-      questions=pickFromBank(topics,selectedDiff,types,count);
-    }catch(e){
-      questions=[];
-    }
-
-    // Snap to 100
     pct=100;
     if(gpNum) gpNum.textContent=100;
     if(gpBar) gpBar.style.width='100%';
-    if(gpLabel) gpLabel.textContent='Done!';
-
+    if(gpLabel) gpLabel.textContent=errorMsg?'Error':'Done!';
     setTimeout(()=>{
       if(progSection) progSection.style.display='none';
       btn.disabled=false;
-      if(!questions.length){
+      if(errorMsg){
+        document.getElementById('outputArea').innerHTML=`<div class="empty"><div class="empty-glyph">!</div><div class="empty-title">Something went wrong</div><div class="empty-sub">${errorMsg}</div></div>`;
+      } else if(!questions||!questions.length){
         document.getElementById('outputArea').innerHTML=`<div class="empty"><div class="empty-glyph">!</div><div class="empty-title">No questions found</div><div class="empty-sub">Try selecting more topics or a different difficulty.</div></div>`;
       } else {
         currentQuestions=questions;
         renderQuestions(currentQuestions,name,count);
-        // Scroll to questions
         document.getElementById('outputArea').scrollIntoView({behavior:'smooth',block:'start'});
       }
     },400);
-  },1600);
+  }
+
+  if(appSource==='offline'){
+    // ── OFFLINE MODE — local question bank ──
+    const phases=[
+      {at:20,label:'Reading your selections…'},
+      {at:50,label:'Filtering the bank…'},
+      {at:75,label:'Shuffling questions…'},
+      {at:88,label:'Almost ready…'},
+    ];
+    if(gpLabel) gpLabel.textContent='Reading your selections…';
+    _loaderInterval=setInterval(()=>{
+      pct=Math.min(pct+2,88);
+      if(gpNum) gpNum.textContent=pct;
+      if(gpBar) gpBar.style.width=pct+'%';
+      const phase=phases.filter(p=>pct>=p.at).pop();
+      if(phase&&gpLabel) gpLabel.textContent=phase.label;
+    },20);
+    setTimeout(()=>{
+      let questions=[];
+      try{ questions=pickFromBank(topics,selectedDiff,types,count); }catch(e){}
+      finishLoad(questions,null);
+    },1400);
+
+  } else {
+    // ── ONLINE MODE — Claude AI ──
+    const phases=[
+      {at:10,label:'Connecting to Claude…'},
+      {at:25,label:'Generating questions…'},
+      {at:50,label:'Building step-by-step solutions…'},
+      {at:75,label:'Verifying answers…'},
+      {at:88,label:'Almost ready…'},
+    ];
+    if(gpLabel) gpLabel.textContent='Connecting to Claude…';
+    _loaderInterval=setInterval(()=>{
+      pct=Math.min(pct+1,88);
+      if(gpNum) gpNum.textContent=pct;
+      if(gpBar) gpBar.style.width=pct+'%';
+      const phase=phases.filter(p=>pct>=p.at).pop();
+      if(phase&&gpLabel) gpLabel.textContent=phase.label;
+    },80);
+
+    const sys=`You are a Georgia 7th grade accelerated math teacher. Generate exactly ${count} GSE-aligned problems for accelerated students. Topics: ${topics.join(', ')}. Difficulty: ${selectedDiff}. Types: ${types.join(', ')}.
+Return ONLY a compact JSON array, no markdown, no extra text. Example item:
+{"type":"numerical","topic":"Ratios","question":"Solve: 3/4 = x/12","answer":"9","hint":"Cross multiply","steps":[{"step":1,"title":"Cross multiply","explanation":"Multiply 3x12 and 4xx to get 36=4x."},{"step":2,"title":"Solve","explanation":"Divide both sides by 4 to get x=9."}],"points":2,"graph":null}
+Rules: type=numerical|word|puzzle|reallife. answer=exact value. steps=2 for easy, 3 for medium, 4 for hard. reallife uses Georgia contexts (Chick-fil-A, MARTA, Braves). graph=null unless topic is functions. Keep every field SHORT.`;
+
+    try{
+      const res=await fetch('/api/claude',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          model:'claude-sonnet-4-20250514',
+          max_tokens:8000,
+          system:sys,
+          messages:[{role:'user',content:`Generate ${count} problems now. Return JSON array only.`}]
+        })
+      });
+      const data=await res.json();
+      if(data.error){
+        const msg=typeof data.error==='object'?(data.error.message||JSON.stringify(data.error)):String(data.error);
+        return finishLoad(null,`Claude API error: ${msg}`);
+      }
+      const raw=(data.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
+      if(!raw) return finishLoad(null,'Empty response from Claude. Check your API key.');
+      let parsed;
+      try{ parsed=JSON.parse(raw); }
+      catch(_){
+        // Try salvage
+        const matches=[]; const re=/\{(?:[^{}]|\{[^{}]*\})*\}/g; let m;
+        while((m=re.exec(raw))!==null){ try{matches.push(JSON.parse(m[0]));}catch(_){} }
+        if(matches.length>0){ parsed=matches; }
+        else return finishLoad(null,'Could not parse Claude response. Please try again.');
+      }
+      finishLoad(Array.isArray(parsed)?parsed:[parsed],null);
+    }catch(e){
+      finishLoad(null,`Network error: ${e.message}`);
+    }
+  }
 }
 
 function buildGraph(g){
