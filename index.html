@@ -918,7 +918,7 @@ Rules: type=numerical|word|puzzle|reallife. answer=exact value. steps=2 for easy
     const data=await res.json();
     // Check for API-level error first
     if(data.error){
-      throw new Error(`Gemini API error: ${data.error||JSON.stringify(data)}`); 
+      throw new Error(`API error: ${data.error||JSON.stringify(data)}`); 
     }
     const raw=(data.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
     let parsed;
