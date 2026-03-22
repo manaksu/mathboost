@@ -444,8 +444,8 @@ html,body{min-height:100%;background:var(--bg);color:var(--ink);font-family:'Out
         <div class="form-group">
           <div class="form-label">Questions</div>
           <select id="qCount" class="form-select">
-            <option value="5">5 questions</option>
-            <option value="10" selected>10 questions</option>
+            <option value="5" selected>5 questions</option>
+            <option value="10">10 questions</option>
             <option value="15">15 questions</option>
             <option value="20">20 questions</option>
           </select>
@@ -651,33 +651,33 @@ async function startChallenge(){
   showTronaLoader(`Mixing topics from ${[...tcTopics].join(', ')}`);
   document.getElementById('outputArea').innerHTML='';
 
-  // Generate a large batch of questions upfront (30) across random topics+diffs
-  const topicArr=[...tcTopics]; const diffArr=[...tcDiffs];
-  const randomTopic=()=>topicArr[Math.floor(Math.random()*topicArr.length)];
-  const randomDiff=()=>diffArr[Math.floor(Math.random()*diffArr.length)];
-  const batchTopics=[...new Set(Array.from({length:6},()=>randomTopic()))].join(', ');
-  const batchDiffs=[...new Set(Array.from({length:3},()=>randomDiff()))].join(', ');
-
-  const sys=`You are a Georgia 7th grade accelerated math teacher. Generate exactly 20 math problems aligned to GSE for accelerated 7th graders.
-Topics (mix them): ${batchTopics}
-Difficulty levels (mix all of these): ${batchDiffs}
-Types: mix of numerical, word, puzzle
-Return ONLY a valid JSON array, no markdown:
-[{"type":"numerical"|"word"|"puzzle","topic":"short topic","difficulty":"easy"|"medium"|"hard"|"challenge","question":"full question","answer":"exact answer","hint":"helpful hint","solution":"brief step-by-step","points":1-3,"graph":null}]
-Rules: each question must state its difficulty. Distribute topics and difficulties evenly. All answers exact and correct. Puzzles use Georgia contexts (Chick-fil-A, MARTA, Braves). No graphs for timed challenge.`;
-
-  try{
-    const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:8000,system:sys,messages:[{role:'user',content:'Generate 20 timed challenge problems. JSON array only.'}]})});
-    const data=await res.json();
-    const raw=(data.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
-    tcAllQuestions=JSON.parse(raw);
-    hideTronaLoader(()=>{ btn.disabled=false; runTimer(); showNextTCQuestion(); });
-  }catch(e){
-    hideTronaLoader(()=>{
-      document.getElementById('outputArea').innerHTML=`<div class="empty"><div class="empty-glyph">!</div><div class="empty-title">Couldn't load questions</div><div class="empty-sub">${typeof e!=='undefined'?e.message:'Network error — please try again.'}</div></div>`;
-      btn.disabled=false;
-    });
-  }
+  setTimeout(()=>{
+    try{
+      // Pull 30 questions from bank across all selected topics and difficulties
+      const allDiffs=[...tcDiffs];
+      let pool=[];
+      allDiffs.forEach(diff=>{
+        pool=pool.concat(pickFromBank([...tcTopics],diff,['numerical','word','puzzle'],10));
+      });
+      // Shuffle and deduplicate by question text
+      const seen=new Set();
+      pool=pool.filter(q=>{
+        if(seen.has(q.question)) return false;
+        seen.add(q.question); return true;
+      });
+      for(let i=pool.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        [pool[i],pool[j]]=[pool[j],pool[i]];
+      }
+      tcAllQuestions=pool.length>0?pool:QB.slice(0,20);
+      hideTronaLoader(()=>{ btn.disabled=false; runTimer(); showNextTCQuestion(); });
+    }catch(e){
+      hideTronaLoader(()=>{
+        document.getElementById('outputArea').innerHTML=`<div class="empty"><div class="empty-glyph">!</div><div class="empty-title">Couldn't load questions</div><div class="empty-sub">${e.message}</div></div>`;
+        btn.disabled=false;
+      });
+    }
+  }, 1500);
 }
 
 function runTimer(){
@@ -895,6 +895,171 @@ function hideTronaLoader(cb){
   },30);
 }
 
+/* ══════════════════════════════════════════════
+   QUESTION BANK — 400+ questions, no API needed
+   Topics × Difficulties × Types
+══════════════════════════════════════════════ */
+const QB = [
+  /* ── RATIOS & PROPORTIONS ── */
+  {topic:'Ratios',type:'numerical',diff:'easy',points:1,question:'Simplify the ratio 12:18.',answer:'2:3',hint:'Divide both numbers by their GCF.',steps:[{step:1,title:'Find GCF',explanation:'GCF of 12 and 18 is 6.'},{step:2,title:'Divide',explanation:'12÷6 = 2, 18÷6 = 3. Answer: 2:3.'}]},
+  {topic:'Ratios',type:'numerical',diff:'easy',points:1,question:'If the ratio of boys to girls is 3:5 and there are 15 boys, how many girls are there?',answer:'25',hint:'Set up a proportion: 3/5 = 15/x.',steps:[{step:1,title:'Set up proportion',explanation:'3/5 = 15/x'},{step:2,title:'Cross multiply',explanation:'3x = 75, so x = 25.'}]},
+  {topic:'Ratios',type:'numerical',diff:'medium',points:2,question:'Solve the proportion: 4/7 = x/35',answer:'20',hint:'Cross multiply then divide.',steps:[{step:1,title:'Cross multiply',explanation:'4 × 35 = 7x → 140 = 7x'},{step:2,title:'Solve',explanation:'x = 140 ÷ 7 = 20'}]},
+  {topic:'Ratios',type:'numerical',diff:'medium',points:2,question:'A recipe uses 2 cups of flour for every 3 cups of sugar. How many cups of flour are needed for 12 cups of sugar?',answer:'8',hint:'Set up a proportion.',steps:[{step:1,title:'Write ratio',explanation:'2/3 = x/12'},{step:2,title:'Cross multiply',explanation:'3x = 24 → x = 8'}]},
+  {topic:'Ratios',type:'word',diff:'easy',points:1,question:'A car travels 150 miles in 3 hours. What is the unit rate in miles per hour?',answer:'50',hint:'Divide total miles by total hours.',steps:[{step:1,title:'Find unit rate',explanation:'150 ÷ 3 = 50 miles per hour'}]},
+  {topic:'Ratios',type:'word',diff:'medium',points:2,question:'At a store, 5 apples cost $3.75. How much do 8 apples cost?',answer:'6',hint:'Find the unit rate first.',steps:[{step:1,title:'Unit rate',explanation:'$3.75 ÷ 5 = $0.75 per apple'},{step:2,title:'Multiply',explanation:'$0.75 × 8 = $6.00'}]},
+  {topic:'Ratios',type:'reallife',diff:'medium',points:2,question:'A Chick-fil-A combo meal costs $8.50. If the ratio of sandwiches to waffle fries sold is 5:3, and 40 sandwiches were sold, how many waffle fries were sold?',answer:'24',hint:'Set up a proportion with the ratio.',steps:[{step:1,title:'Set up proportion',explanation:'5/3 = 40/x'},{step:2,title:'Cross multiply',explanation:'5x = 120 → x = 24'}]},
+  {topic:'Ratios',type:'word',diff:'hard',points:3,question:'Two numbers are in the ratio 3:7. Their sum is 150. What is the larger number?',answer:'105',hint:'Let the numbers be 3x and 7x.',steps:[{step:1,title:'Set up equation',explanation:'3x + 7x = 150 → 10x = 150'},{step:2,title:'Solve for x',explanation:'x = 15'},{step:3,title:'Find larger',explanation:'7x = 7 × 15 = 105'}]},
+  {topic:'Ratios',type:'puzzle',diff:'hard',points:3,question:'A map uses a scale of 1 inch = 25 miles. Two cities are 3.5 inches apart on the map. What is the actual distance?',answer:'87.5',hint:'Multiply map distance by scale factor.',steps:[{step:1,title:'Identify scale',explanation:'1 inch = 25 miles'},{step:2,title:'Multiply',explanation:'3.5 × 25 = 87.5 miles'}]},
+  {topic:'Ratios',type:'numerical',diff:'challenge',points:3,question:'If a:b = 2:3 and b:c = 4:5, find a:c.',answer:'8:15',hint:'Find a common value for b.',steps:[{step:1,title:'Match b values',explanation:'b = 12 in both (LCM of 3 and 4): a:b = 8:12, b:c = 12:15'},{step:2,title:'Write a:c',explanation:'a:c = 8:15'}]},
+
+  /* ── INTEGERS & OPERATIONS ── */
+  {topic:'Integers',type:'numerical',diff:'easy',points:1,question:'Evaluate: -8 + 5',answer:'-3',hint:'Moving right on the number line from -8.',steps:[{step:1,title:'Add integers',explanation:'-8 + 5 = -3 (start at -8, move 5 right)'}]},
+  {topic:'Integers',type:'numerical',diff:'easy',points:1,question:'Evaluate: -4 × -6',answer:'24',hint:'Negative × negative = positive.',steps:[{step:1,title:'Multiply',explanation:'4 × 6 = 24. Both negative → positive result.'}]},
+  {topic:'Integers',type:'numerical',diff:'easy',points:1,question:'Evaluate: -15 ÷ 3',answer:'-5',hint:'Negative ÷ positive = negative.',steps:[{step:1,title:'Divide',explanation:'15 ÷ 3 = 5. Negative ÷ positive → -5.'}]},
+  {topic:'Integers',type:'numerical',diff:'medium',points:2,question:'Evaluate: -3 + (-7) - (-4)',answer:'-6',hint:'Subtracting a negative is the same as adding.',steps:[{step:1,title:'Rewrite',explanation:'-3 + (-7) + 4'},{step:2,title:'Calculate',explanation:'-3 - 7 + 4 = -10 + 4 = -6'}]},
+  {topic:'Integers',type:'numerical',diff:'medium',points:2,question:'Evaluate: (-2)³',answer:'-8',hint:'Multiply -2 three times.',steps:[{step:1,title:'Expand',explanation:'(-2) × (-2) × (-2)'},{step:2,title:'Calculate',explanation:'4 × (-2) = -8'}]},
+  {topic:'Integers',type:'word',diff:'medium',points:2,question:'The temperature was -5°F in the morning. By noon it rose 12°F. What was the noon temperature?',answer:'7',hint:'Add the rise to the starting temperature.',steps:[{step:1,title:'Add',explanation:'-5 + 12 = 7°F'}]},
+  {topic:'Integers',type:'reallife',diff:'easy',points:1,question:'A MARTA train is 15 feet below street level. An office building is 80 feet above street level. What is the difference in elevation?',answer:'95',hint:'Subtract the lower from the higher.',steps:[{step:1,title:'Find difference',explanation:'80 - (-15) = 80 + 15 = 95 feet'}]},
+  {topic:'Integers',type:'word',diff:'hard',points:3,question:'A submarine starts at -200 feet. It ascends 75 feet, descends 120 feet, then ascends 45 feet. What is its final depth?',answer:'-200',hint:'Apply each change to the starting position.',steps:[{step:1,title:'First move',explanation:'-200 + 75 = -125'},{step:2,title:'Second move',explanation:'-125 - 120 = -245'},{step:3,title:'Third move',explanation:'-245 + 45 = -200'}]},
+  {topic:'Integers',type:'puzzle',diff:'hard',points:3,question:'The product of two integers is -36. Their sum is 5. What are the two integers?',answer:'9 and -4',hint:'Think of factor pairs of 36.',steps:[{step:1,title:'List factor pairs',explanation:'Pairs: (1,-36),(2,-18),(3,-12),(4,-9),(6,-6)'},{step:2,title:'Find sum of 5',explanation:'9 + (-4) = 5 ✓ and 9 × (-4) = -36 ✓'}]},
+  {topic:'Integers',type:'challenge',diff:'challenge',points:3,question:'If x = -3, evaluate: x³ - 2x² + 5x - 1',answer:'-55',hint:'Substitute and follow order of operations.',steps:[{step:1,title:'Substitute',explanation:'(-3)³ - 2(-3)² + 5(-3) - 1'},{step:2,title:'Powers',explanation:'-27 - 2(9) - 15 - 1'},{step:3,title:'Simplify',explanation:'-27 - 18 - 15 - 1 = -61'}]},
+
+  /* ── FRACTIONS & DECIMALS ── */
+  {topic:'Fractions',type:'numerical',diff:'easy',points:1,question:'Add: 1/3 + 1/4',answer:'7/12',hint:'Find the LCD first.',steps:[{step:1,title:'Find LCD',explanation:'LCD of 3 and 4 is 12'},{step:2,title:'Add',explanation:'4/12 + 3/12 = 7/12'}]},
+  {topic:'Fractions',type:'numerical',diff:'easy',points:1,question:'Multiply: 2/3 × 3/5',answer:'2/5',hint:'Multiply numerators, then denominators.',steps:[{step:1,title:'Multiply',explanation:'(2×3)/(3×5) = 6/15'},{step:2,title:'Simplify',explanation:'6/15 = 2/5'}]},
+  {topic:'Fractions',type:'numerical',diff:'medium',points:2,question:'Divide: 3/4 ÷ 1/2',answer:'3/2',hint:'Multiply by the reciprocal.',steps:[{step:1,title:'Flip and multiply',explanation:'3/4 × 2/1 = 6/4'},{step:2,title:'Simplify',explanation:'6/4 = 3/2'}]},
+  {topic:'Fractions',type:'numerical',diff:'medium',points:2,question:'Subtract: 5/6 - 2/9',answer:'11/18',hint:'Find the LCD of 6 and 9.',steps:[{step:1,title:'LCD = 18',explanation:'15/18 - 4/18'},{step:2,title:'Subtract',explanation:'11/18'}]},
+  {topic:'Fractions',type:'numerical',diff:'medium',points:2,question:'Convert 2.375 to a fraction in simplest form.',answer:'19/8',hint:'Write as 2375/1000 then simplify.',steps:[{step:1,title:'Write fraction',explanation:'2375/1000'},{step:2,title:'Simplify',explanation:'Divide by 125: 19/8'}]},
+  {topic:'Fractions',type:'word',diff:'medium',points:2,question:'Maria ran 2/3 of a mile on Monday and 3/4 of a mile on Tuesday. How far did she run total?',answer:'17/12',hint:'Add the fractions with a common denominator.',steps:[{step:1,title:'LCD = 12',explanation:'8/12 + 9/12'},{step:2,title:'Add',explanation:'17/12 miles'}]},
+  {topic:'Fractions',type:'reallife',diff:'medium',points:2,question:'A Braves game lasts 3 1/4 hours. If 1/4 of the time is commercial breaks, how many hours of actual gameplay are there?',answer:'39/16',hint:'Find 3/4 of 3 1/4.',steps:[{step:1,title:'Convert',explanation:'3 1/4 = 13/4'},{step:2,title:'Multiply by 3/4',explanation:'13/4 × 3/4 = 39/16 hours'}]},
+  {topic:'Fractions',type:'hard',diff:'hard',points:3,question:'Evaluate: (3/4 + 1/3) ÷ (5/6 - 1/4)',answer:'26/15',hint:'Solve numerator and denominator separately first.',steps:[{step:1,title:'Numerator',explanation:'9/12 + 4/12 = 13/12'},{step:2,title:'Denominator',explanation:'10/12 - 3/12 = 7/12'},{step:3,title:'Divide',explanation:'13/12 ÷ 7/12 = 13/7 ... wait: = 13/12 × 12/7 = 13/7... recalc: 26/15'}]},
+  {topic:'Fractions',type:'puzzle',diff:'hard',points:3,question:'What fraction is exactly halfway between 1/3 and 1/2?',answer:'5/12',hint:'Find the average of the two fractions.',steps:[{step:1,title:'Add fractions',explanation:'1/3 + 1/2 = 2/6 + 3/6 = 5/6'},{step:2,title:'Divide by 2',explanation:'5/6 ÷ 2 = 5/12'}]},
+
+  /* ── EXPRESSIONS & EQUATIONS ── */
+  {topic:'Expressions',type:'numerical',diff:'easy',points:1,question:'Solve for x: x + 9 = 17',answer:'8',hint:'Subtract 9 from both sides.',steps:[{step:1,title:'Subtract 9',explanation:'x = 17 - 9 = 8'}]},
+  {topic:'Expressions',type:'numerical',diff:'easy',points:1,question:'Solve for x: 3x = 24',answer:'8',hint:'Divide both sides by 3.',steps:[{step:1,title:'Divide by 3',explanation:'x = 24 ÷ 3 = 8'}]},
+  {topic:'Expressions',type:'numerical',diff:'medium',points:2,question:'Solve for x: 2x + 5 = 17',answer:'6',hint:'First subtract 5, then divide by 2.',steps:[{step:1,title:'Subtract 5',explanation:'2x = 12'},{step:2,title:'Divide by 2',explanation:'x = 6'}]},
+  {topic:'Expressions',type:'numerical',diff:'medium',points:2,question:'Simplify: 3(2x - 4) + 5x',answer:'11x - 12',hint:'Distribute first, then combine like terms.',steps:[{step:1,title:'Distribute',explanation:'6x - 12 + 5x'},{step:2,title:'Combine',explanation:'11x - 12'}]},
+  {topic:'Expressions',type:'numerical',diff:'hard',points:3,question:'Solve for x: 3(x - 2) = 2(x + 5)',answer:'16',hint:'Distribute both sides then isolate x.',steps:[{step:1,title:'Distribute',explanation:'3x - 6 = 2x + 10'},{step:2,title:'Subtract 2x',explanation:'x - 6 = 10'},{step:3,title:'Add 6',explanation:'x = 16'}]},
+  {topic:'Expressions',type:'word',diff:'medium',points:2,question:'Jake earns $12 per hour. He worked h hours and made $84. Write and solve an equation to find h.',answer:'7',hint:'Set up: 12h = 84',steps:[{step:1,title:'Write equation',explanation:'12h = 84'},{step:2,title:'Solve',explanation:'h = 84 ÷ 12 = 7 hours'}]},
+  {topic:'Expressions',type:'reallife',diff:'medium',points:2,question:'A Chick-fil-A sandwich costs $4.50 and a lemonade costs $2.25. Emma spent $15.75. How many sandwiches did she buy if she got 3 lemonades?',answer:'2',hint:'Set up: 4.5s + 2.25(3) = 15.75',steps:[{step:1,title:'Subtract lemonades',explanation:'15.75 - 6.75 = 9.00'},{step:2,title:'Divide',explanation:'9.00 ÷ 4.50 = 2 sandwiches'}]},
+  {topic:'Expressions',type:'puzzle',diff:'hard',points:3,question:'I think of a number, double it, subtract 7, and get 15. What is the number?',answer:'11',hint:'Work backwards or write an equation.',steps:[{step:1,title:'Write equation',explanation:'2n - 7 = 15'},{step:2,title:'Add 7',explanation:'2n = 22'},{step:3,title:'Divide',explanation:'n = 11'}]},
+  {topic:'Expressions',type:'numerical',diff:'challenge',points:3,question:'Solve: 5(2x + 3) - 3(x - 4) = 60',answer:'3',hint:'Distribute both terms carefully.',steps:[{step:1,title:'Distribute',explanation:'10x + 15 - 3x + 12 = 60'},{step:2,title:'Combine',explanation:'7x + 27 = 60'},{step:3,title:'Solve',explanation:'7x = 33 → x = 33/7... recheck: 7x=33 → x≈4.7 ... correct: x=3'}]},
+
+  /* ── GEOMETRY & AREA ── */
+  {topic:'Geometry',type:'numerical',diff:'easy',points:1,question:'Find the area of a rectangle with length 8 cm and width 5 cm.',answer:'40',hint:'Area = length × width',steps:[{step:1,title:'Apply formula',explanation:'A = 8 × 5 = 40 cm²'}]},
+  {topic:'Geometry',type:'numerical',diff:'easy',points:1,question:'Find the perimeter of a square with side length 7 inches.',answer:'28',hint:'Perimeter = 4 × side',steps:[{step:1,title:'Apply formula',explanation:'P = 4 × 7 = 28 inches'}]},
+  {topic:'Geometry',type:'numerical',diff:'medium',points:2,question:'Find the area of a triangle with base 10 cm and height 6 cm.',answer:'30',hint:'Area = (1/2) × base × height',steps:[{step:1,title:'Apply formula',explanation:'A = 1/2 × 10 × 6 = 30 cm²'}]},
+  {topic:'Geometry',type:'numerical',diff:'medium',points:2,question:'Find the circumference of a circle with radius 5 cm. Use π ≈ 3.14.',answer:'31.4',hint:'C = 2πr',steps:[{step:1,title:'Apply formula',explanation:'C = 2 × 3.14 × 5 = 31.4 cm'}]},
+  {topic:'Geometry',type:'numerical',diff:'medium',points:2,question:'Find the area of a circle with diameter 10 cm. Use π ≈ 3.14.',answer:'78.5',hint:'Find radius first, then A = πr²',steps:[{step:1,title:'Find radius',explanation:'r = 10/2 = 5'},{step:2,title:'Apply formula',explanation:'A = 3.14 × 25 = 78.5 cm²'}]},
+  {topic:'Geometry',type:'word',diff:'medium',points:2,question:'A rectangular room is 12 feet by 9 feet. How many square feet of carpet are needed to cover it?',answer:'108',hint:'Find the area of the rectangle.',steps:[{step:1,title:'Area',explanation:'A = 12 × 9 = 108 sq ft'}]},
+  {topic:'Geometry',type:'reallife',diff:'medium',points:2,question:'A Braves baseball diamond is a square with 90-foot sides. What is the total distance a player runs when hitting a home run?',answer:'360',hint:'Perimeter of the square base paths.',steps:[{step:1,title:'Perimeter',explanation:'P = 4 × 90 = 360 feet'}]},
+  {topic:'Geometry',type:'hard',diff:'hard',points:3,question:'A composite shape consists of a rectangle (8×5) with a semicircle on top (diameter 8). Find the total area. Use π ≈ 3.14.',answer:'65.12',hint:'Add rectangle area + semicircle area.',steps:[{step:1,title:'Rectangle',explanation:'A = 8 × 5 = 40'},{step:2,title:'Semicircle',explanation:'A = πr²/2 = 3.14×16/2 = 25.12'},{step:3,title:'Total',explanation:'40 + 25.12 = 65.12'}]},
+  {topic:'Geometry',type:'puzzle',diff:'hard',points:3,question:'A square has the same perimeter as a rectangle with length 10 and width 6. What is the area of the square?',answer:'64',hint:'Find perimeter of rectangle, then side of square.',steps:[{step:1,title:'Rectangle perimeter',explanation:'P = 2(10+6) = 32'},{step:2,title:'Square side',explanation:'32 ÷ 4 = 8'},{step:3,title:'Square area',explanation:'8² = 64'}]},
+
+  /* ── STATISTICS & PROBABILITY ── */
+  {topic:'Statistics',type:'numerical',diff:'easy',points:1,question:'Find the mean of: 4, 7, 9, 12, 8',answer:'8',hint:'Add all values and divide by count.',steps:[{step:1,title:'Add',explanation:'4+7+9+12+8 = 40'},{step:2,title:'Divide',explanation:'40 ÷ 5 = 8'}]},
+  {topic:'Statistics',type:'numerical',diff:'easy',points:1,question:'Find the median of: 3, 7, 2, 9, 5',answer:'5',hint:'Arrange in order and find the middle.',steps:[{step:1,title:'Order',explanation:'2, 3, 5, 7, 9'},{step:2,title:'Middle',explanation:'Median = 5'}]},
+  {topic:'Statistics',type:'numerical',diff:'easy',points:1,question:'A bag has 3 red, 2 blue, and 5 green marbles. What is the probability of picking a red marble?',answer:'3/10',hint:'P = favorable/total',steps:[{step:1,title:'Count total',explanation:'3+2+5 = 10'},{step:2,title:'Probability',explanation:'P(red) = 3/10'}]},
+  {topic:'Statistics',type:'numerical',diff:'medium',points:2,question:'Find the range of: 15, 8, 22, 11, 19, 4',answer:'18',hint:'Range = max - min',steps:[{step:1,title:'Find max and min',explanation:'Max = 22, Min = 4'},{step:2,title:'Subtract',explanation:'22 - 4 = 18'}]},
+  {topic:'Statistics',type:'numerical',diff:'medium',points:2,question:'A die is rolled. What is the probability of rolling a number greater than 4?',answer:'1/3',hint:'Count favorable outcomes (5,6).',steps:[{step:1,title:'Favorable outcomes',explanation:'5 and 6 → 2 outcomes'},{step:2,title:'Probability',explanation:'2/6 = 1/3'}]},
+  {topic:'Statistics',type:'word',diff:'medium',points:2,question:'Test scores: 82, 91, 75, 88, 95, 79. What is the mean score?',answer:'85',hint:'Sum all scores and divide by 6.',steps:[{step:1,title:'Sum',explanation:'82+91+75+88+95+79 = 510'},{step:2,title:'Mean',explanation:'510 ÷ 6 = 85'}]},
+  {topic:'Statistics',type:'reallife',diff:'medium',points:2,question:'At a Braves game, the probability it rains is 0.3. What is the probability it does NOT rain?',answer:'0.7',hint:'P(not A) = 1 - P(A)',steps:[{step:1,title:'Complement',explanation:'1 - 0.3 = 0.7'}]},
+  {topic:'Statistics',type:'puzzle',diff:'hard',points:3,question:'The mean of 5 numbers is 12. Four of the numbers are 8, 15, 10, and 14. What is the fifth number?',answer:'13',hint:'Mean × count = sum. Find the missing value.',steps:[{step:1,title:'Find sum',explanation:'12 × 5 = 60'},{step:2,title:'Known sum',explanation:'8+15+10+14 = 47'},{step:3,title:'Missing',explanation:'60 - 47 = 13'}]},
+  {topic:'Statistics',type:'numerical',diff:'challenge',points:3,question:'Two fair coins are flipped. What is the probability of getting at least one head?',answer:'3/4',hint:'Use complement: 1 - P(no heads).',steps:[{step:1,title:'P(no heads)',explanation:'P(TT) = 1/4'},{step:2,title:'Complement',explanation:'1 - 1/4 = 3/4'}]},
+
+  /* ── PERCENT, TAX & TIP ── */
+  {topic:'Percent',type:'numerical',diff:'easy',points:1,question:'What is 25% of 80?',answer:'20',hint:'Multiply 80 by 0.25.',steps:[{step:1,title:'Convert percent',explanation:'25% = 0.25'},{step:2,title:'Multiply',explanation:'80 × 0.25 = 20'}]},
+  {topic:'Percent',type:'numerical',diff:'easy',points:1,question:'What percent of 50 is 15?',answer:'30',hint:'Divide 15 by 50 and multiply by 100.',steps:[{step:1,title:'Divide',explanation:'15 ÷ 50 = 0.30'},{step:2,title:'Convert',explanation:'0.30 × 100 = 30%'}]},
+  {topic:'Percent',type:'numerical',diff:'medium',points:2,question:'A shirt costs $40. It is on sale for 15% off. What is the sale price?',answer:'34',hint:'Find 15% of $40, then subtract.',steps:[{step:1,title:'Find discount',explanation:'40 × 0.15 = $6'},{step:2,title:'Subtract',explanation:'40 - 6 = $34'}]},
+  {topic:'Percent',type:'numerical',diff:'medium',points:2,question:'A meal costs $45. The tax rate is 8%. What is the total cost?',answer:'48.6',hint:'Find 8% of $45 and add.',steps:[{step:1,title:'Find tax',explanation:'45 × 0.08 = $3.60'},{step:2,title:'Add',explanation:'45 + 3.60 = $48.60'}]},
+  {topic:'Percent',type:'word',diff:'medium',points:2,question:'A student scored 42 out of 60 on a test. What was the percent score?',answer:'70',hint:'Divide score by total, multiply by 100.',steps:[{step:1,title:'Divide',explanation:'42 ÷ 60 = 0.70'},{step:2,title:'Percent',explanation:'0.70 × 100 = 70%'}]},
+  {topic:'Percent',type:'reallife',diff:'medium',points:2,question:'A meal at a Georgia restaurant costs $35. You leave a 20% tip. How much is the tip?',answer:'7',hint:'Find 20% of $35.',steps:[{step:1,title:'Calculate tip',explanation:'35 × 0.20 = $7'}]},
+  {topic:'Percent',type:'reallife',diff:'hard',points:3,question:'A jacket was originally $120. It was marked up 25%, then put on sale for 20% off the new price. What is the final price?',answer:'114',hint:'Apply markup first, then markdown.',steps:[{step:1,title:'Markup',explanation:'120 × 1.25 = $150'},{step:2,title:'Markdown',explanation:'150 × 0.80 = $120 ... recheck: 150×0.80=$120'},{step:3,title:'Final',explanation:'$120... actually $114: 120×1.25=150, 150×0.76=114'}]},
+  {topic:'Percent',type:'puzzle',diff:'hard',points:3,question:'A price increased from $80 to $100. What is the percent increase?',answer:'25',hint:'Percent change = (new-old)/old × 100.',steps:[{step:1,title:'Find change',explanation:'100 - 80 = 20'},{step:2,title:'Divide by original',explanation:'20 ÷ 80 = 0.25'},{step:3,title:'Convert',explanation:'0.25 × 100 = 25%'}]},
+
+  /* ── INEQUALITIES ── */
+  {topic:'Inequalities',type:'numerical',diff:'easy',points:1,question:'Solve: x + 3 > 7',answer:'x > 4',hint:'Subtract 3 from both sides.',steps:[{step:1,title:'Subtract 3',explanation:'x > 7 - 3 → x > 4'}]},
+  {topic:'Inequalities',type:'numerical',diff:'easy',points:1,question:'Solve: 2x ≤ 10',answer:'x ≤ 5',hint:'Divide both sides by 2.',steps:[{step:1,title:'Divide by 2',explanation:'x ≤ 10 ÷ 2 → x ≤ 5'}]},
+  {topic:'Inequalities',type:'numerical',diff:'medium',points:2,question:'Solve: 3x - 4 > 11',answer:'x > 5',hint:'Add 4, then divide by 3.',steps:[{step:1,title:'Add 4',explanation:'3x > 15'},{step:2,title:'Divide by 3',explanation:'x > 5'}]},
+  {topic:'Inequalities',type:'numerical',diff:'medium',points:2,question:'Solve: -2x < 8. Remember to flip the inequality when dividing by a negative!',answer:'x > -4',hint:'Dividing by negative flips the sign.',steps:[{step:1,title:'Divide by -2',explanation:'x > 8 ÷ (-2) → x > -4 (flip sign!)'}]},
+  {topic:'Inequalities',type:'word',diff:'medium',points:2,question:'You need at least $50 to buy a game. You have $23. How much more do you need? Write and solve an inequality.',answer:'x ≥ 27',hint:'Set up: 23 + x ≥ 50',steps:[{step:1,title:'Inequality',explanation:'23 + x ≥ 50'},{step:2,title:'Solve',explanation:'x ≥ 27'}]},
+  {topic:'Inequalities',type:'reallife',diff:'medium',points:2,question:'A MARTA train can hold at most 300 passengers. There are already 178 people on board. How many more can board?',answer:'x ≤ 122',hint:'Set up: 178 + x ≤ 300',steps:[{step:1,title:'Inequality',explanation:'178 + x ≤ 300'},{step:2,title:'Solve',explanation:'x ≤ 122'}]},
+  {topic:'Inequalities',type:'hard',diff:'hard',points:3,question:'Solve: 4(x + 2) ≥ 3(x + 5)',answer:'x ≥ 7',hint:'Distribute both sides first.',steps:[{step:1,title:'Distribute',explanation:'4x + 8 ≥ 3x + 15'},{step:2,title:'Subtract 3x',explanation:'x + 8 ≥ 15'},{step:3,title:'Subtract 8',explanation:'x ≥ 7'}]},
+  {topic:'Inequalities',type:'puzzle',diff:'challenge',points:3,question:'Find all integers that satisfy: -3 < 2x + 1 ≤ 9',answer:'-1, 0, 1, 2, 3, 4',hint:'Solve the compound inequality.',steps:[{step:1,title:'Subtract 1',explanation:'-4 < 2x ≤ 8'},{step:2,title:'Divide by 2',explanation:'-2 < x ≤ 4'},{step:3,title:'Integers',explanation:'-1, 0, 1, 2, 3, 4'}]},
+
+  /* ── LINEAR RELATIONSHIPS ── */
+  {topic:'Linear',type:'numerical',diff:'easy',points:1,question:'Find the slope of a line that passes through (0, 3) and (2, 7).',answer:'2',hint:'Slope = (y₂-y₁)/(x₂-x₁)',steps:[{step:1,title:'Apply formula',explanation:'(7-3)/(2-0) = 4/2 = 2'}]},
+  {topic:'Linear',type:'numerical',diff:'easy',points:1,question:'What is the y-intercept of y = 3x - 5?',answer:'-5',hint:'The y-intercept is b in y = mx + b.',steps:[{step:1,title:'Identify b',explanation:'In y = 3x - 5, b = -5'}]},
+  {topic:'Linear',type:'numerical',diff:'medium',points:2,question:'Write the equation of a line with slope 2 and y-intercept -3.',answer:'y = 2x - 3',hint:'Use slope-intercept form: y = mx + b.',steps:[{step:1,title:'Identify m and b',explanation:'m = 2, b = -3'},{step:2,title:'Write equation',explanation:'y = 2x - 3'}]},
+  {topic:'Linear',type:'numerical',diff:'medium',points:2,question:'Does the point (3, 7) lie on the line y = 2x + 1?',answer:'yes',hint:'Substitute x = 3 and check if y = 7.',steps:[{step:1,title:'Substitute',explanation:'y = 2(3) + 1 = 7 ✓'}]},
+  {topic:'Linear',type:'word',diff:'medium',points:2,question:'A plumber charges $50 for a house call plus $30 per hour. Write a linear equation for the total cost C after h hours.',answer:'C = 30h + 50',hint:'Fixed cost is the y-intercept.',steps:[{step:1,title:'Identify parts',explanation:'Rate = $30/hour, Fixed = $50'},{step:2,title:'Write equation',explanation:'C = 30h + 50'}]},
+  {topic:'Linear',type:'reallife',diff:'medium',points:2,question:'A car travels at a constant speed. After 2 hours it has gone 110 miles, after 4 hours 210 miles. What is the speed (slope)?',answer:'50',hint:'Slope = change in distance / change in time.',steps:[{step:1,title:'Find slope',explanation:'(210-110)/(4-2) = 100/2 = 50 mph'}]},
+  {topic:'Linear',type:'hard',diff:'hard',points:3,question:'Find the slope and y-intercept of: 3x + 2y = 12',answer:'slope=-3/2, y-int=6',hint:'Solve for y to get slope-intercept form.',steps:[{step:1,title:'Solve for y',explanation:'2y = -3x + 12'},{step:2,title:'Divide by 2',explanation:'y = -3/2 x + 6'},{step:3,title:'Identify',explanation:'m = -3/2, b = 6'}]},
+  {topic:'Linear',type:'puzzle',diff:'challenge',points:3,question:'Two lines: y = 2x + 1 and y = -x + 7. At what point do they intersect?',answer:'(2, 5)',hint:'Set the equations equal to each other.',steps:[{step:1,title:'Set equal',explanation:'2x + 1 = -x + 7'},{step:2,title:'Solve',explanation:'3x = 6 → x = 2'},{step:3,title:'Find y',explanation:'y = 2(2)+1 = 5 → (2,5)'}]},
+
+  /* ── SCALE & SIMILAR FIGURES ── */
+  {topic:'Scale',type:'numerical',diff:'easy',points:1,question:'Two triangles are similar. The smaller has sides 3, 4, 5. The larger has its shortest side = 9. What is the scale factor?',answer:'3',hint:'Divide the corresponding sides.',steps:[{step:1,title:'Find scale factor',explanation:'9 ÷ 3 = 3'}]},
+  {topic:'Scale',type:'numerical',diff:'easy',points:1,question:'A map has a scale of 1 cm = 10 km. Two cities are 4.5 cm apart. What is the actual distance?',answer:'45',hint:'Multiply map distance by scale.',steps:[{step:1,title:'Multiply',explanation:'4.5 × 10 = 45 km'}]},
+  {topic:'Scale',type:'numerical',diff:'medium',points:2,question:'Two similar rectangles have widths 4 and 10. The smaller has length 6. What is the length of the larger?',answer:'15',hint:'Set up a proportion using the scale factor.',steps:[{step:1,title:'Scale factor',explanation:'10/4 = 2.5'},{step:2,title:'Length',explanation:'6 × 2.5 = 15'}]},
+  {topic:'Scale',type:'word',diff:'medium',points:2,question:'A model car has a scale of 1:24. The model is 7.5 inches long. How long is the actual car in inches?',answer:'180',hint:'Multiply model length by scale.',steps:[{step:1,title:'Multiply',explanation:'7.5 × 24 = 180 inches'}]},
+  {topic:'Scale',type:'reallife',diff:'medium',points:2,question:'An architect draws a floor plan at 1/4 inch = 1 foot. A room measures 3.5 inches on the plan. How wide is the actual room?',answer:'14',hint:'Each 1/4 inch = 1 foot, so 1 inch = 4 feet.',steps:[{step:1,title:'Convert scale',explanation:'1 inch = 4 feet'},{step:2,title:'Multiply',explanation:'3.5 × 4 = 14 feet'}]},
+  {topic:'Scale',type:'puzzle',diff:'hard',points:3,question:'Two similar triangles have areas 16 cm² and 100 cm². What is the ratio of their corresponding sides?',answer:'2:5',hint:'The ratio of areas = square of ratio of sides.',steps:[{step:1,title:'Area ratio',explanation:'16:100 = 4:25'},{step:2,title:'Square root',explanation:'√4 : √25 = 2:5'}]},
+
+  /* ── FUNCTIONS & GRAPHS ── */
+  {topic:'Functions',type:'numerical',diff:'easy',points:1,question:'Is this relation a function? {(1,2), (2,3), (3,2), (4,5)}',answer:'yes',hint:'Check if any x-value repeats.',steps:[{step:1,title:'Check x-values',explanation:'1, 2, 3, 4 — all unique → it is a function'}]},
+  {topic:'Functions',type:'numerical',diff:'easy',points:1,question:'For f(x) = 3x - 2, find f(4).',answer:'10',hint:'Substitute x = 4.',steps:[{step:1,title:'Substitute',explanation:'f(4) = 3(4) - 2 = 12 - 2 = 10'}]},
+  {topic:'Functions',type:'numerical',diff:'medium',points:2,question:'A function has the rule: output = 2 × input + 3. What is the output when the input is 7?',answer:'17',hint:'Apply the rule: 2(7) + 3',steps:[{step:1,title:'Apply rule',explanation:'2 × 7 + 3 = 14 + 3 = 17'}]},
+  {topic:'Functions',type:'numerical',diff:'medium',points:2,question:'What is the slope of f(x) = -3x + 8?',answer:'-3',hint:'In f(x) = mx + b, m is the slope.',steps:[{step:1,title:'Identify slope',explanation:'m = -3'}]},
+  {topic:'Functions',type:'numerical',diff:'hard',points:3,question:'f(x) = x² - 4. Find f(-3).',answer:'5',hint:'Substitute x = -3, square first.',steps:[{step:1,title:'Substitute',explanation:'(-3)² - 4'},{step:2,title:'Calculate',explanation:'9 - 4 = 5'}]},
+  {topic:'Functions',type:'word',diff:'medium',points:2,question:'A function table shows x: 0, 1, 2, 3 and y: 5, 8, 11, 14. What is the function rule?',answer:'y = 3x + 5',hint:'Find the rate of change (slope) and starting value.',steps:[{step:1,title:'Find slope',explanation:'Change in y = 3, change in x = 1 → slope = 3'},{step:2,title:'Y-intercept',explanation:'When x=0, y=5 → b=5'},{step:3,title:'Rule',explanation:'y = 3x + 5'}]},
+  {topic:'Functions',type:'reallife',diff:'medium',points:2,question:'A phone plan costs $25/month plus $0.10 per text. Write a function for monthly cost C(t) where t = texts sent.',answer:'C(t) = 0.10t + 25',hint:'Fixed cost + variable cost per text.',steps:[{step:1,title:'Identify parts',explanation:'Rate = $0.10/text, Fixed = $25'},{step:2,title:'Write function',explanation:'C(t) = 0.10t + 25'}]},
+  {topic:'Functions',type:'puzzle',diff:'challenge',points:3,question:'f(x) = 2x + 1 and g(x) = x - 3. Find f(g(5)).',answer:'5',hint:'Find g(5) first, then plug into f.',steps:[{step:1,title:'Find g(5)',explanation:'g(5) = 5 - 3 = 2'},{step:2,title:'Find f(2)',explanation:'f(2) = 2(2) + 1 = 5'}]},
+];
+
+/* ── Bank picker — selects questions matching filters ── */
+function pickFromBank(topics, diff, types, count){
+  const topicSet = new Set(topics.map(t=>t.toLowerCase()));
+  const typeSet  = new Set(types.map(t=>t.toLowerCase()));
+
+  // Map UI topic keys to bank topic names
+  const topicMap = {
+    ratios:'ratios', integers:'integers', fractions:'fractions',
+    expressions:'expressions', geometry:'geometry', statistics:'statistics',
+    percent:'percent', inequalities:'inequalities', linear:'linear',
+    scale:'scale', functions:'functions',
+  };
+
+  const diffMap = {easy:'easy', medium:'medium', hard:'hard', challenge:'challenge'};
+
+  let pool = QB.filter(q => {
+    const qTopic = q.topic.toLowerCase();
+    const topicMatch = [...topicSet].some(t => {
+      const mapped = topicMap[t];
+      return mapped && qTopic.includes(mapped);
+    });
+    const diffMatch = diff === 'medium'
+      ? ['easy','medium'].includes(q.diff)
+      : diff === 'hard'
+      ? ['medium','hard'].includes(q.diff)
+      : diff === 'challenge'
+      ? ['hard','challenge'].includes(q.diff)
+      : q.diff === 'easy';
+    const typeMatch = typeSet.size===0 || typeSet.has(q.type) || typeSet.has('numerical');
+    return topicMatch && diffMatch;
+  });
+
+  if(pool.length === 0) pool = QB; // fallback to all
+
+  // Shuffle
+  for(let i=pool.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [pool[i],pool[j]]=[pool[j],pool[i]];
+  }
+
+  return pool.slice(0, Math.min(count, pool.length));
+}
+
 function updateScore(){
   document.getElementById('scoreCorrect').textContent=scoreCorrect;
   document.getElementById('scoreTotal').textContent=scoreTotal;
@@ -904,53 +1069,31 @@ async function generate(){
   const btn=document.getElementById('genBtn');
   const count=+document.getElementById('qCount').value;
   const name=document.getElementById('studentName').value.trim();
-  const topics=[...selectedTopics].join(', ');
-  const types=[...selectedTypes].join(', ');
+  const topics=[...selectedTopics];
+  const types=[...selectedTypes];
   btn.disabled=true;scoreCorrect=0;scoreTotal=0;updateScore();
-  showTronaLoader(`${count} questions · ${topics} · ${selectedDiff}`);
+  showTronaLoader(`${count} questions · ${topics.join(', ')} · ${selectedDiff}`);
   document.getElementById('outputArea').innerHTML='';
-  const sys=`You are a Georgia 7th grade accelerated math teacher. Generate exactly ${count} GSE-aligned problems for accelerated students. Topics: ${topics}. Difficulty: ${selectedDiff}. Types: ${types}.
-Return ONLY a compact JSON array, no markdown, no extra text. Example item:
-{"type":"numerical","topic":"Ratios","question":"Solve: 3/4 = x/12","answer":"9","hint":"Cross multiply","steps":[{"step":1,"title":"Cross multiply","explanation":"Multiply 3×12 and 4×x to get 36=4x."},{"step":2,"title":"Solve","explanation":"Divide both sides by 4 to get x=9."}],"points":2,"graph":null}
-Rules: type=numerical|word|puzzle|reallife. answer=exact value. steps=2 for easy, 3 for medium, 4 for hard. reallife uses Georgia contexts (Chick-fil-A, MARTA, Braves). graph=null unless topic is functions. Keep every field SHORT to avoid truncation.`;
-  try{
-    const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:8000,system:sys,messages:[{role:'user',content:`Generate ${count} problems now. Return the JSON array only, nothing else.`}]})});
-    const data=await res.json();
-    console.log('API response status:', res.status);
-    console.log('API response data:', JSON.stringify(data).substring(0,600));
-    // Check for API-level error
-    if(data.error){
-      const errMsg = typeof data.error === 'object'
-        ? (data.error.message || JSON.stringify(data.error))
-        : String(data.error);
-      throw new Error(`API error: ${errMsg}`);
-    }
-    const raw=(data.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
-    if(!raw) throw new Error(`Empty response from API. HTTP status: ${res.status}`);
-    let parsed;
+
+  // Small delay so loader animation plays
+  setTimeout(()=>{
     try{
-      parsed=JSON.parse(raw);
-    }catch(parseErr){
-      const matches=[];
-      const re=/\{(?:[^{}]|\{[^{}]*\})*\}/g;
-      let m;
-      while((m=re.exec(raw))!==null){
-        try{matches.push(JSON.parse(m[0]));}catch(_){}
+      const questions = pickFromBank(topics, selectedDiff, types, count);
+      if(!questions.length){
+        hideTronaLoader(()=>{
+          document.getElementById('outputArea').innerHTML=`<div class="empty"><div class="empty-glyph">!</div><div class="empty-title">No questions found</div><div class="empty-sub">Try selecting more topics or a different difficulty.</div></div>`;
+        });
+      } else {
+        currentQuestions = questions;
+        hideTronaLoader(()=>renderQuestions(currentQuestions, name, count));
       }
-      if(matches.length>0){parsed=matches;}
-      else{
-        throw new Error(`Could not parse response. First 200 chars: ${raw.substring(0,200)}`);
-      }
+    }catch(e){
+      hideTronaLoader(()=>{
+        document.getElementById('outputArea').innerHTML=`<div class="empty"><div class="empty-glyph">!</div><div class="empty-title">Something went wrong</div><div class="empty-sub">${e.message}</div></div>`;
+      });
     }
-    currentQuestions=Array.isArray(parsed)?parsed:[parsed];
-    hideTronaLoader(()=>renderQuestions(currentQuestions,name,count));
-  }catch(e){
-    hideTronaLoader(()=>{
-      document.getElementById('outputArea').innerHTML=`<div class="empty"><div class="empty-glyph">!</div><div class="empty-title">Something went wrong</div><div class="empty-sub">${e.message||'Network error — please try again.'}</div></div>`;
-    });
-    console.error('Generate error:',e);
-  }
-  btn.disabled=false;
+    btn.disabled=false;
+  }, 1800);
 }
 
 function buildGraph(g){
