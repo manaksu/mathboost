@@ -916,16 +916,21 @@ Rules: type=numerical|word|puzzle|reallife. answer=exact value. steps=2 for easy
   try{
     const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:8000,system:sys,messages:[{role:'user',content:`Generate ${count} problems now. Return the JSON array only, nothing else.`}]})});
     const data=await res.json();
-    // Check for API-level error first
+    console.log('API response status:', res.status);
+    console.log('API response data:', JSON.stringify(data).substring(0,600));
+    // Check for API-level error
     if(data.error){
-      throw new Error(`API error: ${data.error||JSON.stringify(data)}`); 
+      const errMsg = typeof data.error === 'object'
+        ? (data.error.message || JSON.stringify(data.error))
+        : String(data.error);
+      throw new Error(`API error: ${errMsg}`);
     }
     const raw=(data.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
+    if(!raw) throw new Error(`Empty response from API. HTTP status: ${res.status}`);
     let parsed;
     try{
       parsed=JSON.parse(raw);
     }catch(parseErr){
-      // Salvage: extract all complete {...} objects from truncated array
       const matches=[];
       const re=/\{(?:[^{}]|\{[^{}]*\})*\}/g;
       let m;
@@ -934,7 +939,7 @@ Rules: type=numerical|word|puzzle|reallife. answer=exact value. steps=2 for easy
       }
       if(matches.length>0){parsed=matches;}
       else{
-        throw new Error('Could not read response. Please try again.');
+        throw new Error(`Could not parse response. First 200 chars: ${raw.substring(0,200)}`);
       }
     }
     currentQuestions=Array.isArray(parsed)?parsed:[parsed];
